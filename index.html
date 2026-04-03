@@ -7,55 +7,61 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
-body { background: #0f1117; color: #e0e0e0; padding: 20px; min-height: 100vh; }
+body { background: #f5f7fa; color: #1a1a2e; padding: 20px; min-height: 100vh; }
 
 .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-.title { font-size: 24px; font-weight: 700; color: #fff; }
-.subtitle { font-size: 13px; color: #888; margin-top: 4px; }
-.synced { font-size: 12px; font-weight: 600; }
+.title { font-size: 24px; font-weight: 700; color: #1a1a2e; }
+.subtitle { font-size: 13px; color: #666; margin-top: 4px; }
 
 .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
-.card { background: #1a1d27; border-radius: 10px; padding: 16px 20px; flex: 1; min-width: 160px; }
+.card { background: #fff; border-radius: 12px; padding: 16px 20px; flex: 1; min-width: 160px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #e8eaf0; }
 .card .lbl { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-.card .val { font-size: 26px; font-weight: 700; color: #fff; margin: 6px 0 3px; }
-.card .rng { font-size: 11px; color: #555; }
+.card .val { font-size: 26px; font-weight: 700; color: #1a1a2e; margin: 6px 0 3px; }
+.card .rng { font-size: 11px; color: #bbb; }
 
-.fbox { background: #1a1d27; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.fbox { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #e8eaf0; }
 .frow { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 12px; }
 .frow:last-child { margin-bottom: 0; }
 .fg label { font-size: 11px; color: #888; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-.fg input, .fg select { background: #0f1117; border: 1px solid #333; color: #fff; padding: 7px 12px; border-radius: 6px; font-size: 13px; outline: none; }
-.fg input:focus, .fg select:focus { border-color: #4f8ef7; }
-.divider { width: 100%; height: 1px; background: #252836; margin: 12px 0; }
+.fg input, .fg select { background: #f5f7fa; border: 1px solid #dde1ec; color: #1a1a2e;
+        padding: 7px 12px; border-radius: 8px; font-size: 13px; outline: none; }
+.fg input:focus, .fg select:focus { border-color: #4f8ef7; background: #fff; }
+.divider { width: 100%; height: 1px; background: #eef0f6; margin: 12px 0; }
 
-.btn { padding: 8px 18px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity 0.2s; }
+.btn { padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity 0.2s; }
 .btn:hover { opacity: 0.85; }
 .btn-primary { background: #4f8ef7; color: #fff; }
-.btn-outline { background: transparent; border: 1px solid #444; color: #aaa; }
+.btn-outline { background: transparent; border: 1px solid #ccc; color: #666; }
 .btn-success { background: #22c55e; color: #fff; }
 
 .params { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .pbtn { padding: 6px 16px; border-radius: 20px; border: 2px solid; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
 
 .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-.cbox { background: #1a1d27; border-radius: 10px; padding: 16px; }
+.cbox { background: #fff; border-radius: 12px; padding: 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #e8eaf0; }
 .cbox.full { grid-column: 1 / -1; }
-.ctitle { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #ccc; }
+.ctitle { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #444; }
 canvas { max-height: 240px; }
 
-.tbox { background: #1a1d27; border-radius: 10px; padding: 16px; }
+.tbox { background: #fff; border-radius: 12px; padding: 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #e8eaf0; }
 .thead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
-.ttitle { font-size: 13px; font-weight: 600; color: #ccc; }
+.ttitle { font-size: 13px; font-weight: 600; color: #444; }
 .tscroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 800px; }
-th { background: #0f1117; color: #888; padding: 10px 12px; text-align: left; border-bottom: 1px solid #333; white-space: nowrap; }
-td { padding: 8px 12px; border-bottom: 1px solid #1e2130; color: #ccc; white-space: nowrap; }
-tr:hover td { background: #1e2130; }
+th { background: #f5f7fa; color: #666; padding: 10px 12px; text-align: left;
+     border-bottom: 2px solid #e8eaf0; white-space: nowrap; font-weight: 600; }
+td { padding: 8px 12px; border-bottom: 1px solid #f0f2f8; color: #333; white-space: nowrap; }
+tr:hover td { background: #f9faff; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
-.badge-s1 { background: #1e3a5f; color: #4f8ef7; }
-.badge-s2 { background: #1a3a2a; color: #22c55e; }
-.loading { text-align: center; padding: 60px; color: #888; font-size: 14px; }
+.badge-s1 { background: #e8f0fe; color: #4f8ef7; }
+.badge-s2 { background: #e6faf0; color: #22c55e; }
+.loading { text-align: center; padding: 60px; color: #999; font-size: 14px; }
 .afl { font-size: 11px; color: #f59e0b; margin-top: 10px; }
+.err { color: #ef4444; }
 
 @media (max-width: 768px) {
   .charts { grid-template-columns: 1fr; }
@@ -149,7 +155,7 @@ tr:hover td { background: #1e2130; }
       <input type="number" id="fval" placeholder="e.g. 5.8" step="any" style="width:110px">
     </div>
     <div class="fg" style="display:flex;gap:8px;align-items:flex-end">
-      <button class="btn btn-primary" onclick="doFetch()">Apply Filters</button>
+      <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
       <button class="btn btn-outline" onclick="doReset()">Reset</button>
       <button class="btn btn-success" onclick="doExport()">⬇ Export CSV</button>
     </div>
@@ -184,244 +190,243 @@ tr:hover td { background: #1e2130; }
   var COLS = ['Before Dryer Pressure','After Dryer Pressure','Dew Point','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
 
   var PARAMS = [
-    { key: 'Before Dryer Pressure',  label: 'Before Dryer', color: '#4f8ef7' },
-    { key: 'After Dryer Pressure',   label: 'After Dryer',  color: '#a78bfa' },
-    { key: 'Dew Point',              label: 'Dew Point',    color: '#34d399' },
-    { key: 'Compressor Outlet Flow', label: 'Outlet Flow',  color: '#f97316' },
-    { key: 'Power Meter',            label: 'Power Meter',  color: '#fb7185' },
-    { key: 'MC1',                    label: 'MC1',          color: '#6366f1' },
-    { key: 'MC2',                    label: 'MC2',          color: '#22c55e' },
-    { key: 'MC3',                    label: 'MC3',          color: '#f59e0b' },
+    { key:'Before Dryer Pressure',  label:'Before Dryer', color:'#4f8ef7' },
+    { key:'After Dryer Pressure',   label:'After Dryer',  color:'#a78bfa' },
+    { key:'Dew Point',              label:'Dew Point',    color:'#16a34a' },
+    { key:'Compressor Outlet Flow', label:'Outlet Flow',  color:'#f97316' },
+    { key:'Power Meter',            label:'Power Meter',  color:'#ef4444' },
+    { key:'MC1',                    label:'MC1',          color:'#6366f1' },
+    { key:'MC2',                    label:'MC2',          color:'#22c55e' },
+    { key:'MC3',                    label:'MC3',          color:'#f59e0b' },
   ];
 
   var activeParams = {};
-  PARAMS.forEach(function(p) { activeParams[p.key] = true; });
-  var allData = [];
+  PARAMS.forEach(function(p){ activeParams[p.key] = true; });
+  var allData = [], filteredData = [];
   var pChart, fChart, mChart;
+  var _cbCounter = 0;
 
-  // Build param toggle buttons
+  // ── Param toggle buttons ──────────────────────────────────────────────────
   var pbDiv = document.getElementById('params');
-  PARAMS.forEach(function(p) {
+  PARAMS.forEach(function(p){
     var btn = document.createElement('button');
     btn.className = 'pbtn';
     btn.textContent = p.label;
     btn.style.borderColor = p.color;
-    btn.style.background = p.color;
+    btn.style.background  = p.color;
     btn.style.color = '#fff';
-    btn.onclick = function() {
-      if (activeParams[p.key]) {
-        activeParams[p.key] = false;
-        btn.style.background = 'transparent';
-        btn.style.color = p.color;
-      } else {
-        activeParams[p.key] = true;
-        btn.style.background = p.color;
-        btn.style.color = '#fff';
-      }
-      renderCharts(aggregate());
+    btn.onclick = function(){
+      if(activeParams[p.key]){ activeParams[p.key]=false; btn.style.background='transparent'; btn.style.color=p.color; }
+      else { activeParams[p.key]=true; btn.style.background=p.color; btn.style.color='#fff'; }
+      renderAll(aggregate(filteredData));
     };
     pbDiv.appendChild(btn);
   });
 
-  function applyQuickRange() {
-    var v = document.getElementById('qr').value;
-    if (!v || v === 'all') {
-      document.getElementById('from').value = '';
-      document.getElementById('to').value = '';
-      return;
+  // ── JSONP (bypasses CORS completely) ──────────────────────────────────────
+  function jsonp(url, params, onSuccess, onError){
+    var cbName = '__scmCb' + (++_cbCounter);
+    var qs = Object.keys(params).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(params[k]); }).join('&');
+    var fullUrl = url + '?' + qs + '&callback=' + cbName;
+
+    var timer = setTimeout(function(){ cleanup(); onError(new Error('Request timed out (15s)')); }, 15000);
+
+    function cleanup(){
+      clearTimeout(timer);
+      delete window[cbName];
+      var el = document.getElementById('_jsonp_'+cbName);
+      if(el) el.parentNode.removeChild(el);
     }
-    var to = new Date(), from = new Date();
-    from.setDate(from.getDate() - parseInt(v));
-    document.getElementById('to').value   = to.toISOString().split('T')[0];
-    document.getElementById('from').value = from.toISOString().split('T')[0];
+
+    window[cbName] = function(data){
+      cleanup();
+      data && data.success ? onSuccess(data) : onError(new Error(data ? data.error : 'Unknown error'));
+    };
+
+    var script = document.createElement('script');
+    script.id  = '_jsonp_'+cbName;
+    script.src = fullUrl;
+    script.onerror = function(){ cleanup(); onError(new Error('Failed to reach Apps Script — check deployment settings')); };
+    document.head.appendChild(script);
   }
 
-  function doReset() {
-    document.getElementById('src').value  = 'all';
-    document.getElementById('qr').value   = 'all';
-    document.getElementById('agg').value  = 'daily';
-    document.getElementById('fcol').value = '';
-    document.getElementById('fval').value = '';
-    document.getElementById('afl').textContent = '';
-    applyQuickRange();
-    doFetch();
-  }
-
-  function doFetch() {
+  // ── Fetch from Apps Script ────────────────────────────────────────────────
+  function doFetch(){
     document.getElementById('sync').textContent = '● Fetching...';
     document.getElementById('sync').style.color = '#f59e0b';
-    document.getElementById('table').innerHTML = '<div class="loading">⏳ Fetching data from Google Sheets...</div>';
+    document.getElementById('table').innerHTML  = '<div class="loading">⏳ Fetching data from Google Sheets...</div>';
 
-    var src  = document.getElementById('src').value;
-    var from = document.getElementById('from').value;
-    var to   = document.getElementById('to').value;
-    var col  = document.getElementById('fcol').value;
-    var op   = document.getElementById('fop').value;
-    var val  = document.getElementById('fval').value;
+    var p = { source: document.getElementById('src').value };
+    var from=document.getElementById('from').value, to=document.getElementById('to').value;
+    if(from) p.from=from;
+    if(to)   p.to=to;
+    var col=document.getElementById('fcol').value, val=document.getElementById('fval').value, op=document.getElementById('fop').value;
+    if(col && val){ p.filterCol=col; p.filterOp=op; p.filterVal=val; }
 
-    var params = ['source=' + src];
-    if (from) params.push('from=' + from);
-    if (to)   params.push('to='   + to);
-    if (col && val) {
-      params.push('filterCol=' + encodeURIComponent(col));
-      params.push('filterOp='  + op);
-      params.push('filterVal=' + val);
-    }
-
-    // Use fetch directly — GitHub Pages has no CORS restrictions!
-    fetch(APPS_URL + '?' + params.join('&'))
-      .then(function(r) { return r.json(); })
-      .then(function(json) {
-        if (!json.success) throw new Error(json.error);
-        allData = json.data;
-        document.getElementById('sync').textContent = '● Synced (' + allData.length + ' rows)';
+    jsonp(APPS_URL, p,
+      function(json){
+        allData = json.data || [];
+        var note = json.limited ? ' ⚠️ capped at 5000 rows' : '';
+        document.getElementById('sync').textContent = '● Synced ('+allData.length+' rows)'+note;
         document.getElementById('sync').style.color = '#22c55e';
-        updateActiveLabel();
-        var d = aggregate();
-        updateCards(d);
-        renderCharts(d);
-        renderTable(d);
-      })
-      .catch(function(err) {
-        document.getElementById('sync').textContent = '● Error: ' + err.message;
+        applyFilters();
+      },
+      function(err){
+        document.getElementById('sync').textContent = '● Error: '+err.message;
         document.getElementById('sync').style.color = '#ef4444';
-        document.getElementById('table').innerHTML = '<div class="loading" style="color:#ef4444">❌ ' + err.message + '</div>';
-      });
+        document.getElementById('table').innerHTML =
+          '<div class="loading err">❌ '+err.message+'<br><br>'+
+          '<small>Ensure the Apps Script is deployed with access set to <strong>"Anyone"</strong>.</small></div>';
+      }
+    );
   }
 
-  function updateActiveLabel() {
-    var parts = [];
-    var src = document.getElementById('src').value;
-    if (src !== 'all') parts.push('Source: ' + (src === 'sheet1' ? 'Archive' : 'Live Feed'));
-    var from = document.getElementById('from').value;
-    var to   = document.getElementById('to').value;
-    if (from || to) parts.push('Date: ' + (from||'...') + ' to ' + (to||'...'));
-    var col = document.getElementById('fcol').value;
-    var val = document.getElementById('fval').value;
-    var op  = document.getElementById('fop').value;
-    var opL = { gt:'>', lt:'<', gte:'>=', lte:'<=', eq:'=' };
-    if (col && val) parts.push(col + ' ' + opL[op] + ' ' + val);
-    document.getElementById('afl').textContent = parts.length ? '🔍 Active filters: ' + parts.join(' | ') : '';
+  // ── Client-side filter ────────────────────────────────────────────────────
+  function applyFilters(){
+    var from=document.getElementById('from').value, to=document.getElementById('to').value;
+    var col=document.getElementById('fcol').value, op=document.getElementById('fop').value, val=parseFloat(document.getElementById('fval').value);
+    filteredData = allData.filter(function(row){
+      if(from||to){
+        var ts=new Date(row['Timestamp']);
+        if(from && ts<new Date(from)) return false;
+        if(to   && ts>new Date(to+'T23:59:59')) return false;
+      }
+      if(col && !isNaN(val)){
+        var rv=parseFloat(row[col]); if(isNaN(rv)) return false;
+        if(op==='gt'&&!(rv>val))return false; if(op==='lt'&&!(rv<val))return false;
+        if(op==='gte'&&!(rv>=val))return false; if(op==='lte'&&!(rv<=val))return false;
+        if(op==='eq'&&rv!==val)return false;
+      }
+      return true;
+    });
+    updateActiveLabel();
+    var d=aggregate(filteredData);
+    updateCards(d); renderAll(d); renderTable(d);
   }
 
-  function aggregate() {
-    var agg = document.getElementById('agg').value;
-    if (agg === 'raw') return allData;
-    var groups = {};
-    allData.forEach(function(row) {
-      var ts  = new Date(row['Timestamp']);
-      var key = agg === 'hourly'
-        ? ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0')+'T'+ts.getHours().toString().padStart(2,'0')+':00'
-        : ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0');
-      if (!groups[key]) groups[key] = [];
+  function updateActiveLabel(){
+    var parts=[],src=document.getElementById('src').value;
+    if(src!=='all') parts.push('Source:'+(src==='sheet1'?'Archive':'Live'));
+    var from=document.getElementById('from').value,to=document.getElementById('to').value;
+    if(from||to) parts.push('Date:'+(from||'...')+' to '+(to||'...'));
+    var col=document.getElementById('fcol').value,val=document.getElementById('fval').value;
+    var opL={gt:'>',lt:'<',gte:'>=',lte:'<=',eq:'='};
+    if(col&&val) parts.push(col+' '+opL[document.getElementById('fop').value]+' '+val);
+    document.getElementById('afl').textContent=parts.length?'🔍 Active: '+parts.join(' | '):'';
+  }
+
+  function applyQuickRange(){
+    var v=document.getElementById('qr').value;
+    if(!v||v==='all'){document.getElementById('from').value='';document.getElementById('to').value='';return;}
+    var to=new Date(),from=new Date(); from.setDate(from.getDate()-parseInt(v));
+    document.getElementById('to').value=to.toISOString().split('T')[0];
+    document.getElementById('from').value=from.toISOString().split('T')[0];
+  }
+
+  function doReset(){
+    ['src','qr','agg','fcol','fval'].forEach(function(id){ document.getElementById(id).value=id==='src'?'all':id==='qr'?'all':id==='agg'?'daily':''; });
+    document.getElementById('afl').textContent='';
+    applyQuickRange(); doFetch();
+  }
+
+  // ── Aggregation ───────────────────────────────────────────────────────────
+  function aggregate(data){
+    var agg=document.getElementById('agg').value; if(agg==='raw') return data;
+    var groups={};
+    data.forEach(function(row){
+      var ts=new Date(row['Timestamp']); if(isNaN(ts)) return;
+      var key=agg==='hourly'
+        ?ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0')+'T'+ts.getHours().toString().padStart(2,'0')+':00'
+        :ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0');
+      if(!groups[key]) groups[key]=[];
       groups[key].push(row);
     });
-    return Object.keys(groups).map(function(k) {
-      var rows = groups[k];
-      var avg  = { Timestamp: k, _source: rows[0]._source };
-      COLS.forEach(function(c) {
-        var vals = rows.map(function(r) { return parseFloat(r[c]); }).filter(function(v) { return !isNaN(v); });
-        avg[c] = vals.length ? (vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(2) : null;
+    return Object.keys(groups).sort().map(function(k){
+      var rows=groups[k], avg={Timestamp:k,_source:rows[0]._source};
+      COLS.forEach(function(c){
+        var vals=rows.map(function(r){return parseFloat(r[c]);}).filter(function(v){return !isNaN(v);});
+        avg[c]=vals.length?(vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(2):null;
       });
       return avg;
-    }).sort(function(a,b){ return new Date(a.Timestamp) - new Date(b.Timestamp); });
+    });
   }
 
-  function updateCards(data) {
-    function calc(col) {
-      var vals = data.map(function(r){ return parseFloat(r[col]); }).filter(function(v){ return !isNaN(v); });
-      if (!vals.length) return { avg:'—', min:'—', max:'—' };
-      var sum = vals.reduce(function(a,b){return a+b;},0);
-      return { avg:(sum/vals.length).toFixed(2), min:Math.min.apply(null,vals).toFixed(2), max:Math.max.apply(null,vals).toFixed(2) };
+  // ── Cards ─────────────────────────────────────────────────────────────────
+  function updateCards(data){
+    function calc(col){
+      var vals=data.map(function(r){return parseFloat(r[col]);}).filter(function(v){return !isNaN(v);});
+      if(!vals.length) return {avg:'—',min:'—',max:'—'};
+      return {avg:(vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(2),min:Math.min.apply(null,vals).toFixed(2),max:Math.max.apply(null,vals).toFixed(2)};
     }
-    function set(vid, rid, col, unit) {
-      var c = calc(col);
-      document.getElementById(vid).textContent = c.avg + ' ' + unit;
-      document.getElementById(rid).textContent = 'Range: ' + c.min + ' — ' + c.max;
+    function set(vid,rid,col,unit){
+      var c=calc(col);
+      document.getElementById(vid).textContent=c.avg==='—'?'—':c.avg+' '+unit;
+      document.getElementById(rid).textContent=c.min==='—'?'':'Range: '+c.min+' — '+c.max;
     }
-    set('avgBefore', 'rangeBefore', 'Before Dryer Pressure',  'bar');
-    set('avgDew',    'rangeDew',    'Dew Point',               '°C');
-    set('avgFlow',   'rangeFlow',   'Compressor Outlet Flow',  'CFM');
-    set('avgPower',  'rangePower',  'Power Meter',             'kW');
+    set('avgBefore','rangeBefore','Before Dryer Pressure','bar');
+    set('avgDew','rangeDew','Dew Point','°C');
+    set('avgFlow','rangeFlow','Compressor Outlet Flow','CFM');
+    set('avgPower','rangePower','Power Meter','kW');
   }
 
-  function renderCharts(data) {
-    var labels = data.map(function(r){ return r['Timestamp']; });
-    function ds(col, color, yAxis) {
-      return {
-        label: col,
-        data: data.map(function(r){ return parseFloat(r[col]) || null; }),
-        borderColor: color, backgroundColor: color+'22',
-        borderWidth: 1.5, pointRadius: 0, tension: 0.3, yAxisID: yAxis
-      };
+  // ── Charts ────────────────────────────────────────────────────────────────
+  function renderAll(data){
+    var labels=data.map(function(r){return r['Timestamp'];});
+    function ds(col,color,yAxis){
+      return {label:col,data:data.map(function(r){return parseFloat(r[col])||null;}),
+        borderColor:color,backgroundColor:color+'22',borderWidth:1.5,pointRadius:0,tension:0.3,yAxisID:yAxis};
     }
-    var xS = { ticks:{color:'#888', maxTicksLimit:10}, grid:{color:'#222'} };
-    var yL = { type:'linear', position:'left',  ticks:{color:'#888'}, grid:{color:'#222'} };
-    var yR = { type:'linear', position:'right', ticks:{color:'#888'}, grid:{drawOnChartArea:false} };
-    function baseOpts(scales) {
-      return { responsive:true, maintainAspectRatio:true, animation:false,
-        plugins:{ legend:{ labels:{ color:'#aaa', font:{size:11} } } }, scales:scales };
-    }
+    var xS={ticks:{color:'#999',maxTicksLimit:10},grid:{color:'#eee'}};
+    var yL={type:'linear',position:'left',ticks:{color:'#999'},grid:{color:'#eee'}};
+    var yR={type:'linear',position:'right',ticks:{color:'#999'},grid:{drawOnChartArea:false}};
+    function bOpts(sc){return {responsive:true,maintainAspectRatio:true,animation:false,plugins:{legend:{labels:{color:'#555',font:{size:11}}}},scales:sc};}
 
-    if (pChart) pChart.destroy();
-    var pSets = [];
-    if (activeParams['Before Dryer Pressure']) pSets.push(ds('Before Dryer Pressure','#4f8ef7','y'));
-    if (activeParams['After Dryer Pressure'])  pSets.push(ds('After Dryer Pressure', '#a78bfa','y'));
-    if (activeParams['Dew Point'])             pSets.push(ds('Dew Point',            '#34d399','y1'));
-    pChart = new Chart(document.getElementById('pc'), {
-      type:'line', data:{labels:labels, datasets:pSets}, options:baseOpts({y:yL, y1:yR, x:xS})
-    });
+    if(pChart) pChart.destroy();
+    var pSets=[];
+    if(activeParams['Before Dryer Pressure']) pSets.push(ds('Before Dryer Pressure','#4f8ef7','y'));
+    if(activeParams['After Dryer Pressure'])  pSets.push(ds('After Dryer Pressure','#a78bfa','y'));
+    if(activeParams['Dew Point'])             pSets.push(ds('Dew Point','#16a34a','y1'));
+    pChart=new Chart(document.getElementById('pc'),{type:'line',data:{labels:labels,datasets:pSets},options:bOpts({y:yL,y1:yR,x:xS})});
 
-    if (fChart) fChart.destroy();
-    var fSets = [];
-    if (activeParams['Compressor Outlet Flow']) fSets.push(ds('Compressor Outlet Flow','#f97316','y'));
-    if (activeParams['Power Meter'])            fSets.push(ds('Power Meter',           '#fb7185','y1'));
-    fChart = new Chart(document.getElementById('fc'), {
-      type:'line', data:{labels:labels, datasets:fSets}, options:baseOpts({y:yL, y1:yR, x:xS})
-    });
+    if(fChart) fChart.destroy();
+    var fSets=[];
+    if(activeParams['Compressor Outlet Flow']) fSets.push(ds('Compressor Outlet Flow','#f97316','y'));
+    if(activeParams['Power Meter'])            fSets.push(ds('Power Meter','#ef4444','y1'));
+    fChart=new Chart(document.getElementById('fc'),{type:'line',data:{labels:labels,datasets:fSets},options:bOpts({y:yL,y1:yR,x:xS})});
 
-    if (mChart) mChart.destroy();
-    var mSets = [];
-    if (activeParams['MC1']) mSets.push({ label:'MC1', data:data.map(function(r){return parseFloat(r['MC1'])||null;}), backgroundColor:'#6366f1' });
-    if (activeParams['MC2']) mSets.push({ label:'MC2', data:data.map(function(r){return parseFloat(r['MC2'])||null;}), backgroundColor:'#22c55e' });
-    if (activeParams['MC3']) mSets.push({ label:'MC3', data:data.map(function(r){return parseFloat(r['MC3'])||null;}), backgroundColor:'#f59e0b' });
-    mChart = new Chart(document.getElementById('mc'), {
-      type:'bar', data:{labels:labels, datasets:mSets},
-      options:{ responsive:true, maintainAspectRatio:true, animation:false,
-        plugins:{ legend:{ labels:{ color:'#aaa' } } },
-        scales:{ x:{stacked:true,ticks:{color:'#888',maxTicksLimit:15},grid:{color:'#222'}},
-                 y:{stacked:true,ticks:{color:'#888'},grid:{color:'#222'}} } }
-    });
+    if(mChart) mChart.destroy();
+    var mSets=[];
+    if(activeParams['MC1']) mSets.push({label:'MC1',data:data.map(function(r){return parseFloat(r['MC1'])||null;}),backgroundColor:'#6366f155'});
+    if(activeParams['MC2']) mSets.push({label:'MC2',data:data.map(function(r){return parseFloat(r['MC2'])||null;}),backgroundColor:'#22c55e55'});
+    if(activeParams['MC3']) mSets.push({label:'MC3',data:data.map(function(r){return parseFloat(r['MC3'])||null;}),backgroundColor:'#f59e0b55'});
+    mChart=new Chart(document.getElementById('mc'),{type:'bar',data:{labels:labels,datasets:mSets},
+      options:{responsive:true,maintainAspectRatio:true,animation:false,plugins:{legend:{labels:{color:'#555'}}},
+        scales:{x:{stacked:true,ticks:{color:'#999',maxTicksLimit:15},grid:{color:'#eee'}},y:{stacked:true,ticks:{color:'#999'},grid:{color:'#eee'}}}}});
   }
 
-  function renderTable(data) {
-    var cols = ['Timestamp','Dew Point','Before Dryer Pressure','After Dryer Pressure','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
-    var show = data.slice(0, 100);
-    document.getElementById('ttitle').textContent = 'Data (showing ' + show.length + ' of ' + data.length + ' records)';
-    var html = '<table><tr><th>Source</th>' + cols.map(function(c){ return '<th>'+c+'</th>'; }).join('') + '</tr>';
-    show.forEach(function(row) {
-      var src = row._source === 'scm oe'
-        ? '<span class="badge badge-s1">scm oe</span>'
-        : '<span class="badge badge-s2">April 2025</span>';
-      html += '<tr><td>'+src+'</td>' + cols.map(function(c){ return '<td>'+(row[c]!=null?row[c]:'—')+'</td>'; }).join('') + '</tr>';
+  // ── Table ─────────────────────────────────────────────────────────────────
+  function renderTable(data){
+    var cols=['Timestamp','Dew Point','Before Dryer Pressure','After Dryer Pressure','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
+    var show=data.slice(0,200);
+    document.getElementById('ttitle').textContent='Data (showing '+show.length+' of '+data.length+' records)';
+    var html='<table><tr><th>Source</th>'+cols.map(function(c){return '<th>'+c+'</th>';}).join('')+'</tr>';
+    show.forEach(function(row){
+      var src=row._source==='scm oe'?'<span class="badge badge-s1">scm oe</span>':'<span class="badge badge-s2">April 2025</span>';
+      html+='<tr><td>'+src+'</td>'+cols.map(function(c){return '<td>'+(row[c]!=null&&row[c]!==''?row[c]:'—')+'</td>';}).join('')+'</tr>';
     });
-    html += '</table>';
-    document.getElementById('table').innerHTML = html;
+    document.getElementById('table').innerHTML=html+'</table>';
   }
 
-  function doExport() {
-    var data = aggregate();
-    var cols = ['Timestamp','_source','Dew Point','Before Dryer Pressure','After Dryer Pressure','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
-    var csv = cols.join(',') + '\n';
-    data.forEach(function(row) {
-      csv += cols.map(function(c){ return '"'+(row[c]!=null?row[c]:'')+'"'; }).join(',') + '\n';
-    });
-    var a = document.createElement('a');
-    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    a.download = 'scm_historical_data.csv';
-    a.click();
+  // ── Export ────────────────────────────────────────────────────────────────
+  function doExport(){
+    var data=aggregate(filteredData);
+    var cols=['Timestamp','_source','Dew Point','Before Dryer Pressure','After Dryer Pressure','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
+    var csv=cols.join(',')+'\n';
+    data.forEach(function(row){csv+=cols.map(function(c){return '"'+(row[c]!=null?row[c]:'')+'"';}).join(',')+'\n';});
+    var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='scm_data.csv'; a.click();
   }
 
+  // ── Init ──────────────────────────────────────────────────────────────────
   applyQuickRange();
   doFetch();
 </script>
