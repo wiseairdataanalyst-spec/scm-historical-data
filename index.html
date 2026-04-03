@@ -186,19 +186,14 @@ tr:hover td { background: #f9faff; }
 </div>
 
 <script>
-  // ── Config ────────────────────────────────────────────────────────────────
-  // Sheet 1: gid=0  (scm oe)
-  // Sheet 2: gid=1031453691  (April 2025)
+  // ── CONFIG — only change SHEET_ID if needed ───────────────────────────────
   var SHEET_ID = '1q0ORu2K2Xyo8CdmvPrUV-N3emXseT03L0lWhgsWUsDA';
-
   var SHEETS = [
-    { name: 'scm oe',     gid: '0',          source: 'scm oe'     },
-    { name: 'April 2025', gid: '1031453691',  source: 'April 2025' }
+    { name: 'scm oe',     gid: '0',           source: 'scm oe'     },
+    { name: 'April 2025', gid: '1031453691',   source: 'April 2025' }
   ];
-
   var COLS = ['Before Dryer Pressure','After Dryer Pressure','Dew Point',
               'Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
-
   var PARAMS_CFG = [
     { key:'Before Dryer Pressure',  label:'Before Dryer', color:'#4f8ef7' },
     { key:'After Dryer Pressure',   label:'After Dryer',  color:'#a78bfa' },
@@ -230,98 +225,103 @@ tr:hover td { background: #f9faff; }
     pbDiv.appendChild(btn);
   });
 
-  // ── Fetch sheet as CSV via export URL ─────────────────────────────────────
-  // This works for any public Google Sheet without CORS issues via a CORS proxy.
-  // We use the public gviz/tq JSON endpoint but parse it as JSON (not JSONP).
-  // Actually the most reliable no-auth approach for public sheets is the
-  // published CSV export: /export?format=csv&gid=GID
-  // We use a public CORS proxy (allorigins) to fetch it.
+  // ── Fetch via Google Visualization API (no proxy needed, works on public sheets) ──
+  function gvizFetch(gid, sourceName) {
+    return new Promise(function(resolve, reject) {
+      // gviz/tq returns JSONP — we use a unique callback name
+      var cbName = 'gviz_cb_' + gid + '_' + Date.now();
+      var script = document.createElement('script');
+      var timeout = setTimeout(function(){
+        delete window[cbName];
+        document.body.removeChild(script);
+        reject(new Error('Timeout fetching sheet: ' + sourceName));
+      }, 15000);
 
-  function csvFetch(gid, sourceName) {
-    var csvUrl = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
-                 '/export?format=csv&gid=' + gid;
-    // Use allorigins CORS proxy
-    var proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(csvUrl);
+      window[cbName] = function(response) {
+        clearTimeout(timeout);
+        delete window[cbName];
+        document.body.removeChild(script);
+        try {
+          var rows = parseGviz(response, sourceName);
+          resolve(rows);
+        } catch(e) {
+          reject(e);
+        }
+      };
 
-    return fetch(proxyUrl)
-      .then(function(r){
-        if(!r.ok) throw new Error('HTTP ' + r.status + ' fetching sheet gid=' + gid);
-        return r.json();
-      })
-      .then(function(json){
-        var text = json.contents;
-        if(!text) throw new Error('Empty response for gid=' + gid);
-        return parseCSV(text, sourceName);
-      });
+      // tqx=out:json with responseHandler makes it JSONP-compatible
+      var url = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
+                '/gviz/tq?tqx=out:json;responseHandler:' + cbName +
+                '&gid=' + gid;
+      script.src = url;
+      script.onerror = function(){
+        clearTimeout(timeout);
+        delete window[cbName];
+        reject(new Error('Failed to load sheet: ' + sourceName + '. Make sure sheet is shared as "Anyone with link = Viewer"'));
+      };
+      document.body.appendChild(script);
+    });
   }
 
-  // ── Parse CSV text → array of row objects ─────────────────────────────────
-  function parseCSV(text, sourceName) {
-    // Split lines, handle \r\n and \n
-    var lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-    if(lines.length < 2) return [];
-
-    // Parse a single CSV line respecting quoted fields
-    function parseLine(line) {
-      var fields = [], cur = '', inQ = false;
-      for(var i = 0; i < line.length; i++) {
-        var ch = line[i];
-        if(ch === '"') {
-          if(inQ && line[i+1] === '"') { cur += '"'; i++; }
-          else inQ = !inQ;
-        } else if(ch === ',' && !inQ) {
-          fields.push(cur.trim()); cur = '';
-        } else {
-          cur += ch;
-        }
-      }
-      fields.push(cur.trim());
-      return fields;
+  // ── Parse Google Visualization JSON response ──────────────────────────────
+  function parseGviz(response, sourceName) {
+    var table = response.table;
+    if (!table || !table.cols || !table.rows) {
+      throw new Error('No data found in sheet: ' + sourceName);
     }
 
-    var headers = parseLine(lines[0]);
+    // Build header map from cols
+    var headers = table.cols.map(function(c){ return c.label || c.id || ''; });
+
     var rows = [];
-    for(var i = 1; i < lines.length; i++) {
-      var line = lines[i].trim();
-      if(!line) continue;
-      var vals = parseLine(line);
-      // Skip if first cell is empty or looks like a header repeat
-      if(!vals[0] || vals[0].toLowerCase() === 'timestamp') continue;
+    table.rows.forEach(function(row) {
+      if (!row.c || !row.c[0] || row.c[0].v === null) return;
       var obj = { _source: sourceName };
-      headers.forEach(function(h, idx) {
-        obj[h] = vals[idx] !== undefined ? vals[idx] : '';
+      headers.forEach(function(h, i) {
+        var cell = row.c[i];
+        if (!cell || cell.v === null || cell.v === undefined) {
+          obj[h] = '';
+        } else {
+          // Dates come as "Date(year,month,day,h,m,s)" strings or Date objects
+          if (typeof cell.v === 'string' && cell.v.indexOf('Date(') === 0) {
+            // Parse gviz date format: Date(2025,3,30,17,6,0) — month is 0-indexed
+            var parts = cell.v.replace('Date(','').replace(')','').split(',');
+            var d = new Date(+parts[0], +parts[1], +parts[2], +parts[3]||0, +parts[4]||0, +parts[5]||0);
+            obj[h] = d;
+          } else {
+            obj[h] = cell.v;
+          }
+        }
       });
-      rows.push(obj);
-    }
+      // Only keep rows that have a valid Timestamp
+      if (obj['Timestamp'] || obj[headers[0]]) {
+        // Normalize: if first column is not called Timestamp, rename it
+        if (!obj['Timestamp'] && headers[0]) {
+          obj['Timestamp'] = obj[headers[0]];
+        }
+        rows.push(obj);
+      }
+    });
     return rows;
   }
 
-  // ── Parse timestamp "DD/MM/YYYY, HH:MM:SS" or "YYYY-MM-DD" etc. ──────────
-  function parseTS(ts) {
-    if(!ts) return null;
-    if(ts instanceof Date) return ts;
-    var s = String(ts).trim();
-    // DD/MM/YYYY, HH:MM:SS  or  DD/MM/YYYY HH:MM
-    var m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[,\s]+(\d{1,2}):(\d{2})/);
-    if(m) return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]);
-    // YYYY-MM-DD HH:MM
-    m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
-    if(m) return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]);
-    // YYYY-MM-DD
-    m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if(m) return new Date(+m[1], +m[2]-1, +m[3]);
-    var d = new Date(s);
-    return isNaN(d) ? null : d;
+  // ── Format timestamp for display ──────────────────────────────────────────
+  function fmtTS(ts) {
+    if (!ts) return '—';
+    var d = (ts instanceof Date) ? ts : new Date(ts);
+    if (isNaN(d)) return String(ts);
+    return d.getFullYear() + '-'
+      + (d.getMonth()+1).toString().padStart(2,'0') + '-'
+      + d.getDate().toString().padStart(2,'0') + ' '
+      + d.getHours().toString().padStart(2,'0') + ':'
+      + d.getMinutes().toString().padStart(2,'0');
   }
 
-  function fmtTS(ts) {
-    var d = parseTS(ts);
-    if(!d || isNaN(d)) return String(ts);
-    return d.getFullYear()+'-'
-      +(d.getMonth()+1).toString().padStart(2,'0')+'-'
-      +d.getDate().toString().padStart(2,'0')+' '
-      +d.getHours().toString().padStart(2,'0')+':'
-      +d.getMinutes().toString().padStart(2,'0');
+  function getTS(row) {
+    var ts = row['Timestamp'];
+    if (!ts) return null;
+    if (ts instanceof Date) return ts;
+    return new Date(ts);
   }
 
   // ── Main fetch ────────────────────────────────────────────────────────────
@@ -335,11 +335,14 @@ tr:hover td { background: #f9faff; }
       return src==='all' || (src==='sheet1' && i===0) || (src==='sheet2' && i===1);
     });
 
-    Promise.all(toFetch.map(function(s){ return csvFetch(s.gid, s.source); }))
+    Promise.all(toFetch.map(function(s){ return gvizFetch(s.gid, s.source); }))
       .then(function(results){
         allData = [];
         results.forEach(function(rows){ allData = allData.concat(rows); });
-        allData.sort(function(a,b){ return (parseTS(a.Timestamp)||0) - (parseTS(b.Timestamp)||0); });
+        allData.sort(function(a,b){
+          var ta = getTS(a), tb = getTS(b);
+          return (ta||0) - (tb||0);
+        });
         document.getElementById('sync').textContent = '● Synced (' + allData.length + ' rows)';
         document.getElementById('sync').style.color = '#22c55e';
         applyFilters();
@@ -349,64 +352,74 @@ tr:hover td { background: #f9faff; }
         document.getElementById('sync').style.color = '#ef4444';
         document.getElementById('table').innerHTML =
           '<div class="err-box">' +
-          '❌ <strong>' + err.message + '</strong><br>' +
-          '👉 Troubleshooting steps:<br>' +
-          '1. Make sure the Google Sheet is shared: <strong>Anyone with the link → Viewer</strong><br>' +
-          '2. Check your internet connection<br>' +
-          '3. The CORS proxy (allorigins.win) may be temporarily down — try refreshing<br>' +
-          '4. Open browser console (F12) for detailed error info</div>';
+          '❌ <strong>' + err.message + '</strong><br><br>' +
+          '👉 To fix this:<br>' +
+          '1. Open your Google Sheet<br>' +
+          '2. Click <strong>Share</strong> → <strong>Change to anyone with the link</strong> → set to <strong>Viewer</strong><br>' +
+          '3. Refresh this page<br><br>' +
+          'If already public, open F12 Console and share the exact error for more help.' +
+          '</div>';
       });
   }
 
-  // ── Client filter ─────────────────────────────────────────────────────────
+  // ── Client-side filter ────────────────────────────────────────────────────
   function applyFilters() {
-    var from = document.getElementById('from').value;
-    var to   = document.getElementById('to').value;
-    var col  = document.getElementById('fcol').value;
-    var op   = document.getElementById('fop').value;
-    var val  = parseFloat(document.getElementById('fval').value);
+    var from  = document.getElementById('from').value;
+    var to    = document.getElementById('to').value;
+    var col   = document.getElementById('fcol').value;
+    var op    = document.getElementById('fop').value;
+    var val   = parseFloat(document.getElementById('fval').value);
 
     filteredData = allData.filter(function(row){
-      if(from || to) {
-        var ts = parseTS(row.Timestamp); if(!ts || isNaN(ts)) return false;
-        if(from && ts < new Date(from))            return false;
-        if(to   && ts > new Date(to+'T23:59:59'))  return false;
+      if (from || to) {
+        var ts = getTS(row);
+        if (!ts || isNaN(ts)) return false;
+        if (from && ts < new Date(from))               return false;
+        if (to   && ts > new Date(to + 'T23:59:59'))   return false;
       }
-      if(col && !isNaN(val)) {
-        var rv = parseFloat(row[col]); if(isNaN(rv)) return false;
-        if(op==='gt'  && rv<=val) return false;
-        if(op==='lt'  && rv>=val) return false;
-        if(op==='gte' && rv<val)  return false;
-        if(op==='lte' && rv>val)  return false;
-        if(op==='eq'  && rv!==val)return false;
+      if (col && !isNaN(val)) {
+        var rv = parseFloat(row[col]);
+        if (isNaN(rv)) return false;
+        if (op==='gt'  && rv <= val) return false;
+        if (op==='lt'  && rv >= val) return false;
+        if (op==='gte' && rv <  val) return false;
+        if (op==='lte' && rv >  val) return false;
+        if (op==='eq'  && rv !== val) return false;
       }
       return true;
     });
 
     updateActiveLabel();
     var d = aggregate(filteredData);
-    updateCards(d); renderAll(d); renderTable(d);
+    updateCards(d);
+    renderAll(d);
+    renderTable(d);
   }
 
   function updateActiveLabel() {
-    var parts=[], src=document.getElementById('src').value;
-    if(src!=='all') parts.push('Source: '+(src==='sheet1'?'Archive':'Live'));
-    var from=document.getElementById('from').value, to=document.getElementById('to').value;
-    if(from||to) parts.push('Date: '+(from||'...')+' → '+(to||'...'));
-    var col=document.getElementById('fcol').value, val=document.getElementById('fval').value;
-    var opL={gt:'>',lt:'<',gte:'>=',lte:'<=',eq:'='};
-    if(col&&val) parts.push(col+' '+opL[document.getElementById('fop').value]+' '+val);
-    document.getElementById('afl').textContent = parts.length ? '🔍 '+parts.join(' | ') : '';
+    var parts = [], src = document.getElementById('src').value;
+    if (src !== 'all') parts.push('Source: ' + (src==='sheet1' ? 'Archive' : 'Live'));
+    var from = document.getElementById('from').value, to = document.getElementById('to').value;
+    if (from || to) parts.push('Date: ' + (from||'...') + ' → ' + (to||'...'));
+    var col = document.getElementById('fcol').value, val = document.getElementById('fval').value;
+    var opL = {gt:'>',lt:'<',gte:'>=',lte:'<=',eq:'='};
+    if (col && val) parts.push(col + ' ' + opL[document.getElementById('fop').value] + ' ' + val);
+    document.getElementById('afl').textContent = parts.length ? '🔍 ' + parts.join(' | ') : '';
   }
 
   function applyQuickRange() {
     var v = document.getElementById('qr').value;
-    if(!v || v==='all'){ document.getElementById('from').value=''; document.getElementById('to').value=''; applyFilters(); return; }
-    var to=new Date(), from=new Date();
+    if (!v || v === 'all') {
+      document.getElementById('from').value = '';
+      document.getElementById('to').value   = '';
+      if (allData.length) applyFilters();
+      return;
+    }
+    var to = new Date(), from = new Date();
     from.setDate(from.getDate() - parseInt(v));
     document.getElementById('to').value   = to.toISOString().split('T')[0];
     document.getElementById('from').value = from.toISOString().split('T')[0];
-    applyFilters();
+    if (allData.length) applyFilters();
   }
 
   function doReset() {
@@ -424,34 +437,36 @@ tr:hover td { background: #f9faff; }
   // ── Aggregation ───────────────────────────────────────────────────────────
   function aggregate(data) {
     var agg = document.getElementById('agg').value;
-    if(agg==='raw') return data;
+    if (agg === 'raw') return data;
     var groups = {};
     data.forEach(function(row){
-      var ts = parseTS(row.Timestamp); if(!ts || isNaN(ts)) return;
-      var key = agg==='hourly'
+      var ts = getTS(row);
+      if (!ts || isNaN(ts)) return;
+      var key = agg === 'hourly'
         ? ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0')+'T'+ts.getHours().toString().padStart(2,'0')+':00'
         : ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0');
-      if(!groups[key]) groups[key] = [];
+      if (!groups[key]) groups[key] = [];
       groups[key].push(row);
     });
     return Object.keys(groups).sort().map(function(k){
       var rows = groups[k];
-      var avg = { Timestamp: k, _source: rows[0]._source };
+      var avg  = { Timestamp: k, _source: rows[0]._source };
       COLS.forEach(function(c){
         var vals = rows.map(function(r){ return parseFloat(r[c]); }).filter(function(v){ return !isNaN(v); });
-        avg[c] = vals.length ? (vals.reduce(function(a,b){ return a+b; }, 0) / vals.length).toFixed(2) : null;
+        avg[c] = vals.length ? (vals.reduce(function(a,b){ return a+b; },0)/vals.length).toFixed(2) : null;
       });
       return avg;
     });
   }
 
-  // ── Cards ─────────────────────────────────────────────────────────────────
+  // ── Summary cards ─────────────────────────────────────────────────────────
   function updateCards(data) {
     function calc(col){
       var vals = data.map(function(r){ return parseFloat(r[col]); }).filter(function(v){ return !isNaN(v); });
-      if(!vals.length) return {avg:'—',min:'—',max:'—'};
+      if (!vals.length) return {avg:'—',min:'—',max:'—'};
       return { avg:(vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(2),
-               min:Math.min.apply(null,vals).toFixed(2), max:Math.max.apply(null,vals).toFixed(2) };
+               min:Math.min.apply(null,vals).toFixed(2),
+               max:Math.max.apply(null,vals).toFixed(2) };
     }
     function set(vid, rid, col, unit){
       var c = calc(col);
@@ -466,10 +481,14 @@ tr:hover td { background: #f9faff; }
 
   // ── Charts ────────────────────────────────────────────────────────────────
   function renderAll(data) {
-    var labels = data.map(function(r){ return r.Timestamp; });
+    var labels = data.map(function(r){
+      var ts = getTS(r);
+      return (ts && !isNaN(ts)) ? fmtTS(ts) : String(r.Timestamp);
+    });
     function ds(col, color, yAxis){
       return { label:col, data:data.map(function(r){ return parseFloat(r[col])||null; }),
-        borderColor:color, backgroundColor:color+'22', borderWidth:1.5, pointRadius:0, tension:0.3, yAxisID:yAxis };
+        borderColor:color, backgroundColor:color+'22',
+        borderWidth:1.5, pointRadius:0, tension:0.3, yAxisID:yAxis };
     }
     var xS = { ticks:{color:'#999',maxTicksLimit:10}, grid:{color:'#eee'} };
     var yL = { type:'linear', position:'left',  ticks:{color:'#999'}, grid:{color:'#eee'} };
@@ -482,20 +501,23 @@ tr:hover td { background: #f9faff; }
     if(activeParams['Before Dryer Pressure']) pSets.push(ds('Before Dryer Pressure','#4f8ef7','y'));
     if(activeParams['After Dryer Pressure'])  pSets.push(ds('After Dryer Pressure', '#a78bfa','y'));
     if(activeParams['Dew Point'])             pSets.push(ds('Dew Point',            '#16a34a','y1'));
-    pChart = new Chart(document.getElementById('pc'), {type:'line', data:{labels:labels,datasets:pSets}, options:bOpts({y:yL,y1:yR,x:xS})});
+    pChart = new Chart(document.getElementById('pc'),
+      {type:'line', data:{labels:labels, datasets:pSets}, options:bOpts({y:yL,y1:yR,x:xS})});
 
     if(fChart) fChart.destroy();
     var fSets = [];
     if(activeParams['Compressor Outlet Flow']) fSets.push(ds('Compressor Outlet Flow','#f97316','y'));
     if(activeParams['Power Meter'])            fSets.push(ds('Power Meter','#ef4444','y1'));
-    fChart = new Chart(document.getElementById('fc'), {type:'line', data:{labels:labels,datasets:fSets}, options:bOpts({y:yL,y1:yR,x:xS})});
+    fChart = new Chart(document.getElementById('fc'),
+      {type:'line', data:{labels:labels, datasets:fSets}, options:bOpts({y:yL,y1:yR,x:xS})});
 
     if(mChart) mChart.destroy();
     var mSets = [];
     if(activeParams['MC1']) mSets.push({label:'MC1', data:data.map(function(r){return parseFloat(r.MC1)||null;}), backgroundColor:'#6366f155'});
     if(activeParams['MC2']) mSets.push({label:'MC2', data:data.map(function(r){return parseFloat(r.MC2)||null;}), backgroundColor:'#22c55e55'});
     if(activeParams['MC3']) mSets.push({label:'MC3', data:data.map(function(r){return parseFloat(r.MC3)||null;}), backgroundColor:'#f59e0b55'});
-    mChart = new Chart(document.getElementById('mc'), {type:'bar', data:{labels:labels,datasets:mSets},
+    mChart = new Chart(document.getElementById('mc'), {type:'bar',
+      data:{labels:labels, datasets:mSets},
       options:{responsive:true, maintainAspectRatio:true, animation:false,
         plugins:{legend:{labels:{color:'#555'}}},
         scales:{x:{stacked:true,ticks:{color:'#999',maxTicksLimit:15},grid:{color:'#eee'}},
@@ -504,34 +526,47 @@ tr:hover td { background: #f9faff; }
 
   // ── Table ─────────────────────────────────────────────────────────────────
   function renderTable(data) {
-    var cols = ['Timestamp','Dew Point','Before Dryer Pressure','After Dryer Pressure','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
+    var cols = ['Timestamp','Dew Point','Before Dryer Pressure','After Dryer Pressure',
+                'Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
     var show = data.slice(0, 200);
-    document.getElementById('ttitle').textContent = 'Data (showing '+show.length+' of '+data.length+' records)';
-    var html = '<table><tr><th>Source</th>'+cols.map(function(c){return '<th>'+c+'</th>';}).join('')+'</tr>';
+    document.getElementById('ttitle').textContent =
+      'Data (showing ' + show.length + ' of ' + data.length + ' records)';
+    var html = '<table><tr><th>Source</th>' +
+      cols.map(function(c){ return '<th>'+c+'</th>'; }).join('') + '</tr>';
     show.forEach(function(row){
-      var src = row._source==='scm oe'
+      var src = row._source === 'scm oe'
         ? '<span class="badge badge-s1">scm oe</span>'
         : '<span class="badge badge-s2">April 2025</span>';
-      html += '<tr><td>'+src+'</td><td>'+fmtTS(row.Timestamp)+'</td>'+cols.slice(1).map(function(c){
-        return '<td>'+(row[c]!=null&&row[c]!==''?row[c]:'—')+'</td>';
-      }).join('')+'</tr>';
+      html += '<tr><td>' + src + '</td>';
+      html += '<td>' + fmtTS(row['Timestamp']) + '</td>';
+      html += cols.slice(1).map(function(c){
+        var v = row[c];
+        return '<td>' + (v !== null && v !== '' && v !== undefined ? v : '—') + '</td>';
+      }).join('');
+      html += '</tr>';
     });
-    document.getElementById('table').innerHTML = html+'</table>';
+    document.getElementById('table').innerHTML = html + '</table>';
   }
 
-  // ── Export ────────────────────────────────────────────────────────────────
+  // ── Export CSV ────────────────────────────────────────────────────────────
   function doExport() {
     var data = aggregate(filteredData);
-    var cols = ['Timestamp','_source','Dew Point','Before Dryer Pressure','After Dryer Pressure','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
-    var csv  = cols.join(',')+'\n';
-    data.forEach(function(row){ csv += cols.map(function(c){ return '"'+(row[c]!=null?row[c]:'')+'"'; }).join(',')+'\n'; });
+    var cols = ['Timestamp','_source','Dew Point','Before Dryer Pressure','After Dryer Pressure',
+                'Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
+    var csv = cols.join(',') + '\n';
+    data.forEach(function(row){
+      csv += cols.map(function(c){
+        var v = c === 'Timestamp' ? fmtTS(row[c]) : (row[c] != null ? row[c] : '');
+        return '"' + String(v).replace(/"/g,'""') + '"';
+      }).join(',') + '\n';
+    });
     var a = document.createElement('a');
     a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    a.download = 'scm_historical_data.csv'; a.click();
+    a.download = 'scm_historical_data.csv';
+    a.click();
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
-  applyQuickRange();
   doFetch();
 </script>
 </body>
