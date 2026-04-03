@@ -17,7 +17,7 @@ body { background: #f5f7fa; color: #1a1a2e; padding: 20px; min-height: 100vh; }
 .card { background: #fff; border-radius: 12px; padding: 16px 20px; flex: 1; min-width: 160px;
         box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #e8eaf0; }
 .card .lbl { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-.card .val { font-size: 26px; font-weight: 700; color: #1a1a2e; margin: 6px 0 3px; }
+.card .val { font-size: 24px; font-weight: 700; color: #1a1a2e; margin: 6px 0 3px; }
 .card .rng { font-size: 11px; color: #bbb; }
 
 .fbox { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px;
@@ -59,9 +59,11 @@ tr:hover td { background: #f9faff; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
 .badge-s1 { background: #e8f0fe; color: #4f8ef7; }
 .badge-s2 { background: #e6faf0; color: #22c55e; }
-.loading { text-align: center; padding: 60px; color: #999; font-size: 14px; }
+.loading { text-align: center; padding: 40px; color: #999; font-size: 14px; }
 .afl { font-size: 11px; color: #f59e0b; margin-top: 10px; }
-.err { color: #ef4444; }
+.err-box { background: #fff5f5; border: 1px solid #fecaca; border-radius: 10px; padding: 20px; margin: 10px 0; color: #dc2626; font-size: 13px; line-height: 1.8; }
+.err-box strong { display: block; font-size: 15px; margin-bottom: 8px; }
+.err-box ol { margin-left: 20px; }
 
 @media (max-width: 768px) {
   .charts { grid-template-columns: 1fr; }
@@ -90,7 +92,7 @@ tr:hover td { background: #f9faff; }
   <div class="frow">
     <div class="fg">
       <label>📂 Data Source</label>
-      <select id="src">
+      <select id="src" onchange="doFetch()">
         <option value="all">All Data (Both Sheets)</option>
         <option value="sheet1">Archive only (scm oe)</option>
         <option value="sheet2">Live Feed only (April 2025)</option>
@@ -117,7 +119,7 @@ tr:hover td { background: #f9faff; }
     </div>
     <div class="fg">
       <label>📊 Aggregation</label>
-      <select id="agg">
+      <select id="agg" onchange="applyFilters()">
         <option value="raw">Raw</option>
         <option value="hourly">Hourly Avg</option>
         <option value="daily" selected>Daily Avg</option>
@@ -185,11 +187,25 @@ tr:hover td { background: #f9faff; }
 </div>
 
 <script>
-  var APPS_URL = 'https://script.google.com/macros/s/AKfycbxxisVKGgK59rHBQyUtCLmJOFHPH7kU7zde7Vt9oxbGEOvoBe4WN9E9LM50zZF3p7VS/exec';
+  // ── Sheet config ──────────────────────────────────────────────────────────
+  // Your Google Sheet must be shared as "Anyone with the link can view"
+  var SHEET_ID = '1q0ORu2K2Xyo8CdmvPrUV-N3emXseT03L0lWhgsWUsDA';
+  var GID_S1   = '0';            // "scm oe" tab
+  var GID_S2   = '1031453691';   // "April 2025" tab
+
+  // Proxy to bypass CORS on Google Sheets CSV export
+  // allorigins.win is a free, reliable CORS proxy
+  function proxyUrl(sheetUrl) {
+    return 'https://api.allorigins.win/get?url=' + encodeURIComponent(sheetUrl);
+  }
+
+  function csvExportUrl(gid) {
+    return 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/export?format=csv&gid=' + gid;
+  }
 
   var COLS = ['Before Dryer Pressure','After Dryer Pressure','Dew Point','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
 
-  var PARAMS = [
+  var PARAMS_CFG = [
     { key:'Before Dryer Pressure',  label:'Before Dryer', color:'#4f8ef7' },
     { key:'After Dryer Pressure',   label:'After Dryer',  color:'#a78bfa' },
     { key:'Dew Point',              label:'Dew Point',    color:'#16a34a' },
@@ -201,14 +217,13 @@ tr:hover td { background: #f9faff; }
   ];
 
   var activeParams = {};
-  PARAMS.forEach(function(p){ activeParams[p.key] = true; });
+  PARAMS_CFG.forEach(function(p){ activeParams[p.key] = true; });
   var allData = [], filteredData = [];
   var pChart, fChart, mChart;
-  var _cbCounter = 0;
 
   // ── Param toggle buttons ──────────────────────────────────────────────────
   var pbDiv = document.getElementById('params');
-  PARAMS.forEach(function(p){
+  PARAMS_CFG.forEach(function(p){
     var btn = document.createElement('button');
     btn.className = 'pbtn';
     btn.textContent = p.label;
@@ -223,129 +238,193 @@ tr:hover td { background: #f9faff; }
     pbDiv.appendChild(btn);
   });
 
-  // ── JSONP (bypasses CORS completely) ──────────────────────────────────────
-  function jsonp(url, params, onSuccess, onError){
-    var cbName = '__scmCb' + (++_cbCounter);
-    var qs = Object.keys(params).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(params[k]); }).join('&');
-    var fullUrl = url + '?' + qs + '&callback=' + cbName;
+  // ── CSV parser ────────────────────────────────────────────────────────────
+  function parseCSV(text) {
+    var lines = text.replace(/\r/g,'').trim().split('\n');
+    if(lines.length < 2) return [];
 
-    var timer = setTimeout(function(){ cleanup(); onError(new Error('Request timed out (15s)')); }, 15000);
-
-    function cleanup(){
-      clearTimeout(timer);
-      delete window[cbName];
-      var el = document.getElementById('_jsonp_'+cbName);
-      if(el) el.parentNode.removeChild(el);
+    // Find the real header row (contains "Timestamp")
+    var hi = 0;
+    for(var i=0; i<Math.min(6,lines.length); i++){
+      if(lines[i].toLowerCase().indexOf('timestamp') !== -1){ hi=i; break; }
     }
-
-    window[cbName] = function(data){
-      cleanup();
-      data && data.success ? onSuccess(data) : onError(new Error(data ? data.error : 'Unknown error'));
-    };
-
-    var script = document.createElement('script');
-    script.id  = '_jsonp_'+cbName;
-    script.src = fullUrl;
-    script.onerror = function(){ cleanup(); onError(new Error('Failed to reach Apps Script — check deployment settings')); };
-    document.head.appendChild(script);
+    var headers = splitLine(lines[hi]).map(function(h){ return h.trim(); });
+    var rows = [];
+    for(var j=hi+1; j<lines.length; j++){
+      var vals = splitLine(lines[j]);
+      var ts = vals[0] ? vals[0].trim() : '';
+      // Skip blank rows and repeated header rows
+      if(!ts || ts.toLowerCase()==='timestamp') continue;
+      var row = {};
+      headers.forEach(function(h,k){ row[h] = vals[k] ? vals[k].trim() : ''; });
+      rows.push(row);
+    }
+    return rows;
   }
 
-  // ── Fetch from Apps Script ────────────────────────────────────────────────
+  function splitLine(line){
+    var res=[],cur='',inQ=false;
+    for(var i=0;i<line.length;i++){
+      var c=line[i];
+      if(c==='"'){inQ=!inQ;}
+      else if(c===','&&!inQ){res.push(cur);cur='';}
+      else{cur+=c;}
+    }
+    res.push(cur);
+    return res;
+  }
+
+  // Parse "DD/MM/YYYY, HH:MM:SS" → JS Date
+  function parseTS(ts){
+    if(!ts) return null;
+    // "08/01/2026, 17:32:00"
+    var m = ts.match(/(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})/);
+    if(m) return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]);
+    return new Date(ts);
+  }
+
+  // ── Fetch via CORS proxy ──────────────────────────────────────────────────
+  function fetchSheet(gid, sourceName) {
+    var url = proxyUrl(csvExportUrl(gid));
+    return fetch(url)
+      .then(function(r){
+        if(!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(json){
+        // allorigins wraps response in { contents: "..." }
+        var text = json.contents;
+        if(!text) throw new Error('Empty response from proxy');
+        var rows = parseCSV(text);
+        rows.forEach(function(row){ row._source = sourceName; });
+        return rows;
+      });
+  }
+
+  // ── Main fetch ────────────────────────────────────────────────────────────
   function doFetch(){
+    var src = document.getElementById('src').value;
     document.getElementById('sync').textContent = '● Fetching...';
     document.getElementById('sync').style.color = '#f59e0b';
     document.getElementById('table').innerHTML  = '<div class="loading">⏳ Fetching data from Google Sheets...</div>';
 
-    var p = { source: document.getElementById('src').value };
-    var from=document.getElementById('from').value, to=document.getElementById('to').value;
-    if(from) p.from=from;
-    if(to)   p.to=to;
-    var col=document.getElementById('fcol').value, val=document.getElementById('fval').value, op=document.getElementById('fop').value;
-    if(col && val){ p.filterCol=col; p.filterOp=op; p.filterVal=val; }
+    var fetches = [];
+    if(src === 'all' || src === 'sheet1') fetches.push(fetchSheet(GID_S1, 'scm oe'));
+    if(src === 'all' || src === 'sheet2') fetches.push(fetchSheet(GID_S2, 'April 2025'));
 
-    jsonp(APPS_URL, p,
-      function(json){
-        allData = json.data || [];
-        var note = json.limited ? ' ⚠️ capped at 5000 rows' : '';
-        document.getElementById('sync').textContent = '● Synced ('+allData.length+' rows)'+note;
+    Promise.all(fetches)
+      .then(function(results){
+        allData = [];
+        results.forEach(function(rows){ allData = allData.concat(rows); });
+        // Sort by timestamp
+        allData.sort(function(a,b){ return (parseTS(a.Timestamp)||0) - (parseTS(b.Timestamp)||0); });
+
+        document.getElementById('sync').textContent = '● Synced (' + allData.length + ' rows)';
         document.getElementById('sync').style.color = '#22c55e';
         applyFilters();
-      },
-      function(err){
-        document.getElementById('sync').textContent = '● Error: '+err.message;
+      })
+      .catch(function(err){
+        document.getElementById('sync').textContent = '● Error: ' + err.message;
         document.getElementById('sync').style.color = '#ef4444';
         document.getElementById('table').innerHTML =
-          '<div class="loading err">❌ '+err.message+'<br><br>'+
-          '<small>Ensure the Apps Script is deployed with access set to <strong>"Anyone"</strong>.</small></div>';
-      }
-    );
+          '<div class="err-box">' +
+          '<strong>❌ Could not load data</strong>' +
+          'This usually means the Google Sheet is not publicly shared.<br><br>' +
+          '<strong>Fix in 3 steps:</strong><ol>' +
+          '<li>Open your Google Sheet</li>' +
+          '<li>Click <strong>Share</strong> → <strong>Anyone with the link</strong> → set to <strong>Viewer</strong></li>' +
+          '<li>Refresh this page</li></ol>' +
+          '<br>Error detail: ' + err.message + '</div>';
+      });
   }
 
-  // ── Client-side filter ────────────────────────────────────────────────────
+  // ── Filter ────────────────────────────────────────────────────────────────
   function applyFilters(){
-    var from=document.getElementById('from').value, to=document.getElementById('to').value;
-    var col=document.getElementById('fcol').value, op=document.getElementById('fop').value, val=parseFloat(document.getElementById('fval').value);
+    var from = document.getElementById('from').value;
+    var to   = document.getElementById('to').value;
+    var col  = document.getElementById('fcol').value;
+    var op   = document.getElementById('fop').value;
+    var val  = parseFloat(document.getElementById('fval').value);
+
     filteredData = allData.filter(function(row){
-      if(from||to){
-        var ts=new Date(row['Timestamp']);
-        if(from && ts<new Date(from)) return false;
-        if(to   && ts>new Date(to+'T23:59:59')) return false;
+      if(from || to){
+        var ts = parseTS(row.Timestamp);
+        if(!ts) return false;
+        if(from && ts < new Date(from))              return false;
+        if(to   && ts > new Date(to + 'T23:59:59')) return false;
       }
       if(col && !isNaN(val)){
-        var rv=parseFloat(row[col]); if(isNaN(rv)) return false;
-        if(op==='gt'&&!(rv>val))return false; if(op==='lt'&&!(rv<val))return false;
-        if(op==='gte'&&!(rv>=val))return false; if(op==='lte'&&!(rv<=val))return false;
-        if(op==='eq'&&rv!==val)return false;
+        var rv = parseFloat(row[col]);
+        if(isNaN(rv)) return false;
+        if(op==='gt'  && rv <= val) return false;
+        if(op==='lt'  && rv >= val) return false;
+        if(op==='gte' && rv <  val) return false;
+        if(op==='lte' && rv >  val) return false;
+        if(op==='eq'  && rv !== val) return false;
       }
       return true;
     });
+
     updateActiveLabel();
-    var d=aggregate(filteredData);
-    updateCards(d); renderAll(d); renderTable(d);
+    var d = aggregate(filteredData);
+    updateCards(d);
+    renderAll(d);
+    renderTable(d);
   }
 
   function updateActiveLabel(){
-    var parts=[],src=document.getElementById('src').value;
-    if(src!=='all') parts.push('Source:'+(src==='sheet1'?'Archive':'Live'));
-    var from=document.getElementById('from').value,to=document.getElementById('to').value;
-    if(from||to) parts.push('Date:'+(from||'...')+' to '+(to||'...'));
-    var col=document.getElementById('fcol').value,val=document.getElementById('fval').value;
+    var parts=[], src=document.getElementById('src').value;
+    if(src!=='all') parts.push('Source: '+(src==='sheet1'?'Archive':'Live'));
+    var from=document.getElementById('from').value, to=document.getElementById('to').value;
+    if(from||to) parts.push('Date: '+(from||'...')+' to '+(to||'...'));
+    var col=document.getElementById('fcol').value, val=document.getElementById('fval').value;
     var opL={gt:'>',lt:'<',gte:'>=',lte:'<=',eq:'='};
     if(col&&val) parts.push(col+' '+opL[document.getElementById('fop').value]+' '+val);
-    document.getElementById('afl').textContent=parts.length?'🔍 Active: '+parts.join(' | '):'';
+    document.getElementById('afl').textContent = parts.length ? '🔍 Active filters: '+parts.join(' | ') : '';
   }
 
   function applyQuickRange(){
-    var v=document.getElementById('qr').value;
-    if(!v||v==='all'){document.getElementById('from').value='';document.getElementById('to').value='';return;}
-    var to=new Date(),from=new Date(); from.setDate(from.getDate()-parseInt(v));
-    document.getElementById('to').value=to.toISOString().split('T')[0];
-    document.getElementById('from').value=from.toISOString().split('T')[0];
+    var v = document.getElementById('qr').value;
+    if(!v||v==='all'){ document.getElementById('from').value=''; document.getElementById('to').value=''; applyFilters(); return; }
+    var to=new Date(), from=new Date();
+    from.setDate(from.getDate()-parseInt(v));
+    document.getElementById('to').value   = to.toISOString().split('T')[0];
+    document.getElementById('from').value = from.toISOString().split('T')[0];
+    applyFilters();
   }
 
   function doReset(){
-    ['src','qr','agg','fcol','fval'].forEach(function(id){ document.getElementById(id).value=id==='src'?'all':id==='qr'?'all':id==='agg'?'daily':''; });
-    document.getElementById('afl').textContent='';
-    applyQuickRange(); doFetch();
+    document.getElementById('src').value  = 'all';
+    document.getElementById('qr').value   = 'all';
+    document.getElementById('agg').value  = 'daily';
+    document.getElementById('fcol').value = '';
+    document.getElementById('fval').value = '';
+    document.getElementById('afl').textContent = '';
+    document.getElementById('from').value = '';
+    document.getElementById('to').value   = '';
+    doFetch();
   }
 
   // ── Aggregation ───────────────────────────────────────────────────────────
   function aggregate(data){
-    var agg=document.getElementById('agg').value; if(agg==='raw') return data;
-    var groups={};
+    var agg = document.getElementById('agg').value;
+    if(agg === 'raw') return data;
+    var groups = {};
     data.forEach(function(row){
-      var ts=new Date(row['Timestamp']); if(isNaN(ts)) return;
-      var key=agg==='hourly'
-        ?ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0')+'T'+ts.getHours().toString().padStart(2,'0')+':00'
-        :ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0');
-      if(!groups[key]) groups[key]=[];
+      var ts = parseTS(row.Timestamp);
+      if(!ts || isNaN(ts)) return;
+      var key = agg==='hourly'
+        ? ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0')+'T'+ts.getHours().toString().padStart(2,'0')+':00'
+        : ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0');
+      if(!groups[key]) groups[key] = [];
       groups[key].push(row);
     });
     return Object.keys(groups).sort().map(function(k){
-      var rows=groups[k], avg={Timestamp:k,_source:rows[0]._source};
+      var rows = groups[k];
+      var avg  = { Timestamp:k, _source:rows[0]._source };
       COLS.forEach(function(c){
-        var vals=rows.map(function(r){return parseFloat(r[c]);}).filter(function(v){return !isNaN(v);});
-        avg[c]=vals.length?(vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(2):null;
+        var vals = rows.map(function(r){ return parseFloat(r[c]); }).filter(function(v){ return !isNaN(v); });
+        avg[c] = vals.length ? (vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(2) : null;
       });
       return avg;
     });
@@ -354,76 +433,91 @@ tr:hover td { background: #f9faff; }
   // ── Cards ─────────────────────────────────────────────────────────────────
   function updateCards(data){
     function calc(col){
-      var vals=data.map(function(r){return parseFloat(r[col]);}).filter(function(v){return !isNaN(v);});
+      var vals = data.map(function(r){return parseFloat(r[col]);}).filter(function(v){return !isNaN(v);});
       if(!vals.length) return {avg:'—',min:'—',max:'—'};
-      return {avg:(vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(2),min:Math.min.apply(null,vals).toFixed(2),max:Math.max.apply(null,vals).toFixed(2)};
+      return {avg:(vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(2),
+              min:Math.min.apply(null,vals).toFixed(2),max:Math.max.apply(null,vals).toFixed(2)};
     }
     function set(vid,rid,col,unit){
       var c=calc(col);
-      document.getElementById(vid).textContent=c.avg==='—'?'—':c.avg+' '+unit;
-      document.getElementById(rid).textContent=c.min==='—'?'':'Range: '+c.min+' — '+c.max;
+      document.getElementById(vid).textContent = c.avg==='—'?'—':c.avg+' '+unit;
+      document.getElementById(rid).textContent = c.min==='—'?'':'Range: '+c.min+' — '+c.max;
     }
     set('avgBefore','rangeBefore','Before Dryer Pressure','bar');
-    set('avgDew','rangeDew','Dew Point','°C');
-    set('avgFlow','rangeFlow','Compressor Outlet Flow','CFM');
-    set('avgPower','rangePower','Power Meter','kW');
+    set('avgDew',   'rangeDew',   'Dew Point',            '°C');
+    set('avgFlow',  'rangeFlow',  'Compressor Outlet Flow','CFM');
+    set('avgPower', 'rangePower', 'Power Meter',          'kW');
   }
 
   // ── Charts ────────────────────────────────────────────────────────────────
   function renderAll(data){
-    var labels=data.map(function(r){return r['Timestamp'];});
+    var labels = data.map(function(r){ return r.Timestamp; });
     function ds(col,color,yAxis){
-      return {label:col,data:data.map(function(r){return parseFloat(r[col])||null;}),
-        borderColor:color,backgroundColor:color+'22',borderWidth:1.5,pointRadius:0,tension:0.3,yAxisID:yAxis};
+      return {label:col, data:data.map(function(r){return parseFloat(r[col])||null;}),
+        borderColor:color, backgroundColor:color+'22', borderWidth:1.5, pointRadius:0, tension:0.3, yAxisID:yAxis};
     }
-    var xS={ticks:{color:'#999',maxTicksLimit:10},grid:{color:'#eee'}};
-    var yL={type:'linear',position:'left',ticks:{color:'#999'},grid:{color:'#eee'}};
-    var yR={type:'linear',position:'right',ticks:{color:'#999'},grid:{drawOnChartArea:false}};
-    function bOpts(sc){return {responsive:true,maintainAspectRatio:true,animation:false,plugins:{legend:{labels:{color:'#555',font:{size:11}}}},scales:sc};}
+    var xS = {ticks:{color:'#999',maxTicksLimit:10},grid:{color:'#eee'}};
+    var yL = {type:'linear',position:'left', ticks:{color:'#999'},grid:{color:'#eee'}};
+    var yR = {type:'linear',position:'right',ticks:{color:'#999'},grid:{drawOnChartArea:false}};
+    function bOpts(sc){
+      return {responsive:true,maintainAspectRatio:true,animation:false,
+        plugins:{legend:{labels:{color:'#555',font:{size:11}}}},scales:sc};
+    }
 
     if(pChart) pChart.destroy();
     var pSets=[];
     if(activeParams['Before Dryer Pressure']) pSets.push(ds('Before Dryer Pressure','#4f8ef7','y'));
-    if(activeParams['After Dryer Pressure'])  pSets.push(ds('After Dryer Pressure','#a78bfa','y'));
-    if(activeParams['Dew Point'])             pSets.push(ds('Dew Point','#16a34a','y1'));
-    pChart=new Chart(document.getElementById('pc'),{type:'line',data:{labels:labels,datasets:pSets},options:bOpts({y:yL,y1:yR,x:xS})});
+    if(activeParams['After Dryer Pressure'])  pSets.push(ds('After Dryer Pressure', '#a78bfa','y'));
+    if(activeParams['Dew Point'])             pSets.push(ds('Dew Point',            '#16a34a','y1'));
+    pChart = new Chart(document.getElementById('pc'),{type:'line',data:{labels:labels,datasets:pSets},options:bOpts({y:yL,y1:yR,x:xS})});
 
     if(fChart) fChart.destroy();
     var fSets=[];
     if(activeParams['Compressor Outlet Flow']) fSets.push(ds('Compressor Outlet Flow','#f97316','y'));
-    if(activeParams['Power Meter'])            fSets.push(ds('Power Meter','#ef4444','y1'));
-    fChart=new Chart(document.getElementById('fc'),{type:'line',data:{labels:labels,datasets:fSets},options:bOpts({y:yL,y1:yR,x:xS})});
+    if(activeParams['Power Meter'])            fSets.push(ds('Power Meter',           '#ef4444','y1'));
+    fChart = new Chart(document.getElementById('fc'),{type:'line',data:{labels:labels,datasets:fSets},options:bOpts({y:yL,y1:yR,x:xS})});
 
     if(mChart) mChart.destroy();
     var mSets=[];
-    if(activeParams['MC1']) mSets.push({label:'MC1',data:data.map(function(r){return parseFloat(r['MC1'])||null;}),backgroundColor:'#6366f155'});
-    if(activeParams['MC2']) mSets.push({label:'MC2',data:data.map(function(r){return parseFloat(r['MC2'])||null;}),backgroundColor:'#22c55e55'});
-    if(activeParams['MC3']) mSets.push({label:'MC3',data:data.map(function(r){return parseFloat(r['MC3'])||null;}),backgroundColor:'#f59e0b55'});
-    mChart=new Chart(document.getElementById('mc'),{type:'bar',data:{labels:labels,datasets:mSets},
-      options:{responsive:true,maintainAspectRatio:true,animation:false,plugins:{legend:{labels:{color:'#555'}}},
-        scales:{x:{stacked:true,ticks:{color:'#999',maxTicksLimit:15},grid:{color:'#eee'}},y:{stacked:true,ticks:{color:'#999'},grid:{color:'#eee'}}}}});
+    if(activeParams['MC1']) mSets.push({label:'MC1',data:data.map(function(r){return parseFloat(r.MC1)||null;}),backgroundColor:'#6366f155'});
+    if(activeParams['MC2']) mSets.push({label:'MC2',data:data.map(function(r){return parseFloat(r.MC2)||null;}),backgroundColor:'#22c55e55'});
+    if(activeParams['MC3']) mSets.push({label:'MC3',data:data.map(function(r){return parseFloat(r.MC3)||null;}),backgroundColor:'#f59e0b55'});
+    mChart = new Chart(document.getElementById('mc'),{type:'bar',data:{labels:labels,datasets:mSets},
+      options:{responsive:true,maintainAspectRatio:true,animation:false,
+        plugins:{legend:{labels:{color:'#555'}}},
+        scales:{x:{stacked:true,ticks:{color:'#999',maxTicksLimit:15},grid:{color:'#eee'}},
+                y:{stacked:true,ticks:{color:'#999'},grid:{color:'#eee'}}}}});
   }
 
   // ── Table ─────────────────────────────────────────────────────────────────
   function renderTable(data){
     var cols=['Timestamp','Dew Point','Before Dryer Pressure','After Dryer Pressure','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
-    var show=data.slice(0,200);
-    document.getElementById('ttitle').textContent='Data (showing '+show.length+' of '+data.length+' records)';
-    var html='<table><tr><th>Source</th>'+cols.map(function(c){return '<th>'+c+'</th>';}).join('')+'</tr>';
+    var show = data.slice(0,200);
+    document.getElementById('ttitle').textContent = 'Data (showing '+show.length+' of '+data.length+' records)';
+    var html = '<table><tr><th>Source</th>'+cols.map(function(c){return '<th>'+c+'</th>';}).join('')+'</tr>';
     show.forEach(function(row){
-      var src=row._source==='scm oe'?'<span class="badge badge-s1">scm oe</span>':'<span class="badge badge-s2">April 2025</span>';
-      html+='<tr><td>'+src+'</td>'+cols.map(function(c){return '<td>'+(row[c]!=null&&row[c]!==''?row[c]:'—')+'</td>';}).join('')+'</tr>';
+      var src = row._source==='scm oe'
+        ? '<span class="badge badge-s1">scm oe</span>'
+        : '<span class="badge badge-s2">April 2025</span>';
+      html += '<tr><td>'+src+'</td>'+cols.map(function(c){
+        return '<td>'+(row[c]!=null&&row[c]!==''?row[c]:'—')+'</td>';
+      }).join('')+'</tr>';
     });
-    document.getElementById('table').innerHTML=html+'</table>';
+    document.getElementById('table').innerHTML = html+'</table>';
   }
 
   // ── Export ────────────────────────────────────────────────────────────────
   function doExport(){
-    var data=aggregate(filteredData);
-    var cols=['Timestamp','_source','Dew Point','Before Dryer Pressure','After Dryer Pressure','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
-    var csv=cols.join(',')+'\n';
-    data.forEach(function(row){csv+=cols.map(function(c){return '"'+(row[c]!=null?row[c]:'')+'"';}).join(',')+'\n';});
-    var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='scm_data.csv'; a.click();
+    var data = aggregate(filteredData);
+    var cols = ['Timestamp','_source','Dew Point','Before Dryer Pressure','After Dryer Pressure','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
+    var csv  = cols.join(',')+'\n';
+    data.forEach(function(row){
+      csv += cols.map(function(c){return '"'+(row[c]!=null?row[c]:'')+'"';}).join(',')+'\n';
+    });
+    var a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+    a.download = 'scm_historical_data.csv';
+    a.click();
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
