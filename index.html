@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SCM OE — Historical Data Explorer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+body { background: #0f1117; color: #e0e0e0; padding: 20px; min-height: 100vh; }
+
+.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+.title { font-size: 24px; font-weight: 700; color: #fff; }
+.subtitle { font-size: 13px; color: #888; margin-top: 4px; }
+.synced { font-size: 12px; font-weight: 600; }
+
+.cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.card { background: #1a1d27; border-radius: 10px; padding: 16px 20px; flex: 1; min-width: 160px; }
+.card .lbl { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+.card .val { font-size: 26px; font-weight: 700; color: #fff; margin: 6px 0 3px; }
+.card .rng { font-size: 11px; color: #555; }
+
+.fbox { background: #1a1d27; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.frow { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 12px; }
+.frow:last-child { margin-bottom: 0; }
+.fg label { font-size: 11px; color: #888; display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.fg input, .fg select { background: #0f1117; border: 1px solid #333; color: #fff; padding: 7px 12px; border-radius: 6px; font-size: 13px; outline: none; }
+.fg input:focus, .fg select:focus { border-color: #4f8ef7; }
+.divider { width: 100%; height: 1px; background: #252836; margin: 12px 0; }
+
+.btn { padding: 8px 18px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity 0.2s; }
+.btn:hover { opacity: 0.85; }
+.btn-primary { background: #4f8ef7; color: #fff; }
+.btn-outline { background: transparent; border: 1px solid #444; color: #aaa; }
+.btn-success { background: #22c55e; color: #fff; }
+
+.params { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.pbtn { padding: 6px 16px; border-radius: 20px; border: 2px solid; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.cbox { background: #1a1d27; border-radius: 10px; padding: 16px; }
+.cbox.full { grid-column: 1 / -1; }
+.ctitle { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #ccc; }
+canvas { max-height: 240px; }
+
+.tbox { background: #1a1d27; border-radius: 10px; padding: 16px; }
+.thead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+.ttitle { font-size: 13px; font-weight: 600; color: #ccc; }
+.tscroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 800px; }
+th { background: #0f1117; color: #888; padding: 10px 12px; text-align: left; border-bottom: 1px solid #333; white-space: nowrap; }
+td { padding: 8px 12px; border-bottom: 1px solid #1e2130; color: #ccc; white-space: nowrap; }
+tr:hover td { background: #1e2130; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+.badge-s1 { background: #1e3a5f; color: #4f8ef7; }
+.badge-s2 { background: #1a3a2a; color: #22c55e; }
+.loading { text-align: center; padding: 60px; color: #888; font-size: 14px; }
+.afl { font-size: 11px; color: #f59e0b; margin-top: 10px; }
+
+@media (max-width: 768px) {
+  .charts { grid-template-columns: 1fr; }
+  .cbox.full { grid-column: 1; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="title">📊 SCM OE — Historical Data Explorer</div>
+    <div class="subtitle">Compressed Air System — Archived + Live data from Google Sheets</div>
+  </div>
+  <span id="sync" style="font-size:12px;font-weight:600;color:#f59e0b">● Connecting...</span>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="lbl">Avg Before Dryer Pressure</div><div class="val" id="avgBefore">—</div><div class="rng" id="rangeBefore"></div></div>
+  <div class="card"><div class="lbl">Avg Dew Point</div><div class="val" id="avgDew">—</div><div class="rng" id="rangeDew"></div></div>
+  <div class="card"><div class="lbl">Avg Outlet Flow</div><div class="val" id="avgFlow">—</div><div class="rng" id="rangeFlow"></div></div>
+  <div class="card"><div class="lbl">Avg Power Meter</div><div class="val" id="avgPower">—</div><div class="rng" id="rangePower"></div></div>
+</div>
+
+<div class="fbox">
+  <div class="frow">
+    <div class="fg">
+      <label>📂 Data Source</label>
+      <select id="src">
+        <option value="all">All Data (Both Sheets)</option>
+        <option value="sheet1">Archive only (scm oe)</option>
+        <option value="sheet2">Live Feed only (April 2025)</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label>📅 Date From</label>
+      <input type="date" id="from">
+    </div>
+    <div class="fg">
+      <label>📅 Date To</label>
+      <input type="date" id="to">
+    </div>
+    <div class="fg">
+      <label>⚡ Quick Range</label>
+      <select id="qr" onchange="applyQuickRange()">
+        <option value="">Custom</option>
+        <option value="7">Last 7 Days</option>
+        <option value="30">Last 30 Days</option>
+        <option value="90">Last 90 Days</option>
+        <option value="180">Last 6 Months</option>
+        <option value="all" selected>All Time</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label>📊 Aggregation</label>
+      <select id="agg">
+        <option value="raw">Raw</option>
+        <option value="hourly">Hourly Avg</option>
+        <option value="daily" selected>Daily Avg</option>
+      </select>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="frow">
+    <div class="fg">
+      <label>🔎 Filter Column</label>
+      <select id="fcol">
+        <option value="">None</option>
+        <option value="Before Dryer Pressure">Before Dryer Pressure</option>
+        <option value="After Dryer Pressure">After Dryer Pressure</option>
+        <option value="Dew Point">Dew Point</option>
+        <option value="Compressor Outlet Flow">Compressor Outlet Flow</option>
+        <option value="Power Meter">Power Meter</option>
+        <option value="MC1">MC1</option>
+        <option value="MC2">MC2</option>
+        <option value="MC3">MC3</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label>Condition</label>
+      <select id="fop">
+        <option value="gt">greater than</option>
+        <option value="lt">less than</option>
+        <option value="gte">greater or equal</option>
+        <option value="lte">less or equal</option>
+        <option value="eq">equal to</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label>Value</label>
+      <input type="number" id="fval" placeholder="e.g. 5.8" step="any" style="width:110px">
+    </div>
+    <div class="fg" style="display:flex;gap:8px;align-items:flex-end">
+      <button class="btn btn-primary" onclick="doFetch()">Apply Filters</button>
+      <button class="btn btn-outline" onclick="doReset()">Reset</button>
+      <button class="btn btn-success" onclick="doExport()">⬇ Export CSV</button>
+    </div>
+  </div>
+  <div class="afl" id="afl"></div>
+</div>
+
+<div class="params" id="params"></div>
+
+<div class="charts">
+  <div class="cbox"><div class="ctitle">Pressure & Dew Point Trends</div><canvas id="pc"></canvas></div>
+  <div class="cbox"><div class="ctitle">Flow & Power Trends</div><canvas id="fc"></canvas></div>
+  <div class="cbox full"><div class="ctitle">MC1 / MC2 / MC3 Distribution</div><canvas id="mc"></canvas></div>
+</div>
+
+<div class="tbox">
+  <div class="thead">
+    <span class="ttitle" id="ttitle">Data Table</span>
+    <span style="font-size:11px;color:#888">
+      <span class="badge badge-s1">scm oe</span> Archive &nbsp;
+      <span class="badge badge-s2">April 2025</span> Live
+    </span>
+  </div>
+  <div class="tscroll">
+    <div id="table"><div class="loading">⏳ Loading data...</div></div>
+  </div>
+</div>
+
+<script>
+  var APPS_URL = 'https://script.google.com/macros/s/AKfycbxxisVKGgK59rHBQyUtCLmJOFHPH7kU7zde7Vt9oxbGEOvoBe4WN9E9LM50zZF3p7VS/exec';
+
+  var COLS = ['Before Dryer Pressure','After Dryer Pressure','Dew Point','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
+
+  var PARAMS = [
+    { key: 'Before Dryer Pressure',  label: 'Before Dryer', color: '#4f8ef7' },
+    { key: 'After Dryer Pressure',   label: 'After Dryer',  color: '#a78bfa' },
+    { key: 'Dew Point',              label: 'Dew Point',    color: '#34d399' },
+    { key: 'Compressor Outlet Flow', label: 'Outlet Flow',  color: '#f97316' },
+    { key: 'Power Meter',            label: 'Power Meter',  color: '#fb7185' },
+    { key: 'MC1',                    label: 'MC1',          color: '#6366f1' },
+    { key: 'MC2',                    label: 'MC2',          color: '#22c55e' },
+    { key: 'MC3',                    label: 'MC3',          color: '#f59e0b' },
+  ];
+
+  var activeParams = {};
+  PARAMS.forEach(function(p) { activeParams[p.key] = true; });
+  var allData = [];
+  var pChart, fChart, mChart;
+
+  // Build param toggle buttons
+  var pbDiv = document.getElementById('params');
+  PARAMS.forEach(function(p) {
+    var btn = document.createElement('button');
+    btn.className = 'pbtn';
+    btn.textContent = p.label;
+    btn.style.borderColor = p.color;
+    btn.style.background = p.color;
+    btn.style.color = '#fff';
+    btn.onclick = function() {
+      if (activeParams[p.key]) {
+        activeParams[p.key] = false;
+        btn.style.background = 'transparent';
+        btn.style.color = p.color;
+      } else {
+        activeParams[p.key] = true;
+        btn.style.background = p.color;
+        btn.style.color = '#fff';
+      }
+      renderCharts(aggregate());
+    };
+    pbDiv.appendChild(btn);
+  });
+
+  function applyQuickRange() {
+    var v = document.getElementById('qr').value;
+    if (!v || v === 'all') {
+      document.getElementById('from').value = '';
+      document.getElementById('to').value = '';
+      return;
+    }
+    var to = new Date(), from = new Date();
+    from.setDate(from.getDate() - parseInt(v));
+    document.getElementById('to').value   = to.toISOString().split('T')[0];
+    document.getElementById('from').value = from.toISOString().split('T')[0];
+  }
+
+  function doReset() {
+    document.getElementById('src').value  = 'all';
+    document.getElementById('qr').value   = 'all';
+    document.getElementById('agg').value  = 'daily';
+    document.getElementById('fcol').value = '';
+    document.getElementById('fval').value = '';
+    document.getElementById('afl').textContent = '';
+    applyQuickRange();
+    doFetch();
+  }
+
+  function doFetch() {
+    document.getElementById('sync').textContent = '● Fetching...';
+    document.getElementById('sync').style.color = '#f59e0b';
+    document.getElementById('table').innerHTML = '<div class="loading">⏳ Fetching data from Google Sheets...</div>';
+
+    var src  = document.getElementById('src').value;
+    var from = document.getElementById('from').value;
+    var to   = document.getElementById('to').value;
+    var col  = document.getElementById('fcol').value;
+    var op   = document.getElementById('fop').value;
+    var val  = document.getElementById('fval').value;
+
+    var params = ['source=' + src];
+    if (from) params.push('from=' + from);
+    if (to)   params.push('to='   + to);
+    if (col && val) {
+      params.push('filterCol=' + encodeURIComponent(col));
+      params.push('filterOp='  + op);
+      params.push('filterVal=' + val);
+    }
+
+    // Use fetch directly — GitHub Pages has no CORS restrictions!
+    fetch(APPS_URL + '?' + params.join('&'))
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (!json.success) throw new Error(json.error);
+        allData = json.data;
+        document.getElementById('sync').textContent = '● Synced (' + allData.length + ' rows)';
+        document.getElementById('sync').style.color = '#22c55e';
+        updateActiveLabel();
+        var d = aggregate();
+        updateCards(d);
+        renderCharts(d);
+        renderTable(d);
+      })
+      .catch(function(err) {
+        document.getElementById('sync').textContent = '● Error: ' + err.message;
+        document.getElementById('sync').style.color = '#ef4444';
+        document.getElementById('table').innerHTML = '<div class="loading" style="color:#ef4444">❌ ' + err.message + '</div>';
+      });
+  }
+
+  function updateActiveLabel() {
+    var parts = [];
+    var src = document.getElementById('src').value;
+    if (src !== 'all') parts.push('Source: ' + (src === 'sheet1' ? 'Archive' : 'Live Feed'));
+    var from = document.getElementById('from').value;
+    var to   = document.getElementById('to').value;
+    if (from || to) parts.push('Date: ' + (from||'...') + ' to ' + (to||'...'));
+    var col = document.getElementById('fcol').value;
+    var val = document.getElementById('fval').value;
+    var op  = document.getElementById('fop').value;
+    var opL = { gt:'>', lt:'<', gte:'>=', lte:'<=', eq:'=' };
+    if (col && val) parts.push(col + ' ' + opL[op] + ' ' + val);
+    document.getElementById('afl').textContent = parts.length ? '🔍 Active filters: ' + parts.join(' | ') : '';
+  }
+
+  function aggregate() {
+    var agg = document.getElementById('agg').value;
+    if (agg === 'raw') return allData;
+    var groups = {};
+    allData.forEach(function(row) {
+      var ts  = new Date(row['Timestamp']);
+      var key = agg === 'hourly'
+        ? ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0')+'T'+ts.getHours().toString().padStart(2,'0')+':00'
+        : ts.getFullYear()+'-'+(ts.getMonth()+1).toString().padStart(2,'0')+'-'+ts.getDate().toString().padStart(2,'0');
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(row);
+    });
+    return Object.keys(groups).map(function(k) {
+      var rows = groups[k];
+      var avg  = { Timestamp: k, _source: rows[0]._source };
+      COLS.forEach(function(c) {
+        var vals = rows.map(function(r) { return parseFloat(r[c]); }).filter(function(v) { return !isNaN(v); });
+        avg[c] = vals.length ? (vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(2) : null;
+      });
+      return avg;
+    }).sort(function(a,b){ return new Date(a.Timestamp) - new Date(b.Timestamp); });
+  }
+
+  function updateCards(data) {
+    function calc(col) {
+      var vals = data.map(function(r){ return parseFloat(r[col]); }).filter(function(v){ return !isNaN(v); });
+      if (!vals.length) return { avg:'—', min:'—', max:'—' };
+      var sum = vals.reduce(function(a,b){return a+b;},0);
+      return { avg:(sum/vals.length).toFixed(2), min:Math.min.apply(null,vals).toFixed(2), max:Math.max.apply(null,vals).toFixed(2) };
+    }
+    function set(vid, rid, col, unit) {
+      var c = calc(col);
+      document.getElementById(vid).textContent = c.avg + ' ' + unit;
+      document.getElementById(rid).textContent = 'Range: ' + c.min + ' — ' + c.max;
+    }
+    set('avgBefore', 'rangeBefore', 'Before Dryer Pressure',  'bar');
+    set('avgDew',    'rangeDew',    'Dew Point',               '°C');
+    set('avgFlow',   'rangeFlow',   'Compressor Outlet Flow',  'CFM');
+    set('avgPower',  'rangePower',  'Power Meter',             'kW');
+  }
+
+  function renderCharts(data) {
+    var labels = data.map(function(r){ return r['Timestamp']; });
+    function ds(col, color, yAxis) {
+      return {
+        label: col,
+        data: data.map(function(r){ return parseFloat(r[col]) || null; }),
+        borderColor: color, backgroundColor: color+'22',
+        borderWidth: 1.5, pointRadius: 0, tension: 0.3, yAxisID: yAxis
+      };
+    }
+    var xS = { ticks:{color:'#888', maxTicksLimit:10}, grid:{color:'#222'} };
+    var yL = { type:'linear', position:'left',  ticks:{color:'#888'}, grid:{color:'#222'} };
+    var yR = { type:'linear', position:'right', ticks:{color:'#888'}, grid:{drawOnChartArea:false} };
+    function baseOpts(scales) {
+      return { responsive:true, maintainAspectRatio:true, animation:false,
+        plugins:{ legend:{ labels:{ color:'#aaa', font:{size:11} } } }, scales:scales };
+    }
+
+    if (pChart) pChart.destroy();
+    var pSets = [];
+    if (activeParams['Before Dryer Pressure']) pSets.push(ds('Before Dryer Pressure','#4f8ef7','y'));
+    if (activeParams['After Dryer Pressure'])  pSets.push(ds('After Dryer Pressure', '#a78bfa','y'));
+    if (activeParams['Dew Point'])             pSets.push(ds('Dew Point',            '#34d399','y1'));
+    pChart = new Chart(document.getElementById('pc'), {
+      type:'line', data:{labels:labels, datasets:pSets}, options:baseOpts({y:yL, y1:yR, x:xS})
+    });
+
+    if (fChart) fChart.destroy();
+    var fSets = [];
+    if (activeParams['Compressor Outlet Flow']) fSets.push(ds('Compressor Outlet Flow','#f97316','y'));
+    if (activeParams['Power Meter'])            fSets.push(ds('Power Meter',           '#fb7185','y1'));
+    fChart = new Chart(document.getElementById('fc'), {
+      type:'line', data:{labels:labels, datasets:fSets}, options:baseOpts({y:yL, y1:yR, x:xS})
+    });
+
+    if (mChart) mChart.destroy();
+    var mSets = [];
+    if (activeParams['MC1']) mSets.push({ label:'MC1', data:data.map(function(r){return parseFloat(r['MC1'])||null;}), backgroundColor:'#6366f1' });
+    if (activeParams['MC2']) mSets.push({ label:'MC2', data:data.map(function(r){return parseFloat(r['MC2'])||null;}), backgroundColor:'#22c55e' });
+    if (activeParams['MC3']) mSets.push({ label:'MC3', data:data.map(function(r){return parseFloat(r['MC3'])||null;}), backgroundColor:'#f59e0b' });
+    mChart = new Chart(document.getElementById('mc'), {
+      type:'bar', data:{labels:labels, datasets:mSets},
+      options:{ responsive:true, maintainAspectRatio:true, animation:false,
+        plugins:{ legend:{ labels:{ color:'#aaa' } } },
+        scales:{ x:{stacked:true,ticks:{color:'#888',maxTicksLimit:15},grid:{color:'#222'}},
+                 y:{stacked:true,ticks:{color:'#888'},grid:{color:'#222'}} } }
+    });
+  }
+
+  function renderTable(data) {
+    var cols = ['Timestamp','Dew Point','Before Dryer Pressure','After Dryer Pressure','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
+    var show = data.slice(0, 100);
+    document.getElementById('ttitle').textContent = 'Data (showing ' + show.length + ' of ' + data.length + ' records)';
+    var html = '<table><tr><th>Source</th>' + cols.map(function(c){ return '<th>'+c+'</th>'; }).join('') + '</tr>';
+    show.forEach(function(row) {
+      var src = row._source === 'scm oe'
+        ? '<span class="badge badge-s1">scm oe</span>'
+        : '<span class="badge badge-s2">April 2025</span>';
+      html += '<tr><td>'+src+'</td>' + cols.map(function(c){ return '<td>'+(row[c]!=null?row[c]:'—')+'</td>'; }).join('') + '</tr>';
+    });
+    html += '</table>';
+    document.getElementById('table').innerHTML = html;
+  }
+
+  function doExport() {
+    var data = aggregate();
+    var cols = ['Timestamp','_source','Dew Point','Before Dryer Pressure','After Dryer Pressure','Compressor Outlet Flow','Power Meter','MC1','MC2','MC3'];
+    var csv = cols.join(',') + '\n';
+    data.forEach(function(row) {
+      csv += cols.map(function(c){ return '"'+(row[c]!=null?row[c]:'')+'"'; }).join(',') + '\n';
+    });
+    var a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = 'scm_historical_data.csv';
+    a.click();
+  }
+
+  applyQuickRange();
+  doFetch();
+</script>
+</body>
+</html>
